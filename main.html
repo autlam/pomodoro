@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pomodoro Timer</title>
+<meta charset="UTF-8">
+
+<script src="https://gojs.net/latest/release/go.js"></script>
+<script src="http://code.jquery.com/jquery-2.1.4.min.js"></script>
+
+<link rel="stylesheet" type="text/css" href="main.css">
+
+<script>
+
+  var timer = undefined;
+  
+  function init() {
+
+	jQuery.ajax({
+	  type: "GET",
+	  url: "http://127.0.0.1:8081/list"
+	}).done(function(data) {
+	
+		var d = jQuery.parseJSON(data);		
+		var $ = go.GraphObject.make;		
+		
+		myDiagram =
+		$(go.Diagram, "myDiagramDiv",  // create a Diagram for the DIV HTML element
+		{
+		  initialContentAlignment: go.Spot.Center,
+		  "undoManager.isEnabled": true
+		});
+		
+		myDiagram.nodeTemplate =
+		$(go.Node, "Auto",
+          $(go.Shape, { figure: "RoundedRectangle", fill: "white" },
+          new go.Binding("fill", "color")),
+		  $(go.TextBlock, 
+			{ margin: 4, font: "8pt monospace" },
+			new go.Binding("text", "description")
+		  )
+		);			
+		
+		myDiagram.model = new go.GraphLinksModel(
+			d.t,
+			d.l
+		);
+	});
+  };
+  
+  function checkTask() {
+  
+    if (jQuery("#taskName")[0].value === "" || jQuery("#taskName")[0].value === null) {
+		jQuery("#taskError").text("Please enter unique task name");
+		return;
+	}
+	
+	if (jQuery("#secondCount")[0].value === "" || jQuery("#secondCount")[0].value === null) {
+		jQuery("#taskError").text("Please enter time in second");
+		return;		
+	}
+
+	var param = {
+		key: jQuery("#taskName")[0].value
+	};
+	
+	jQuery.ajax({
+	  type: "GET",	
+	  url: "http://127.0.0.1:8081/exist",
+	  data: param
+	}).done(function(data) { 
+	
+		if(data === "" || data === null || data === undefined) {			
+			jQuery("#taskError").text("no data return from server");
+			return;
+		}
+		
+		var d = jQuery.parseJSON(data);
+
+		if(d.exist === true)
+		{
+			jQuery("#taskError").text("task already existed in the list");
+			return;
+		}
+		
+		jQuery("#taskError").text("");		
+		addTask();
+	});		
+	
+  };
+  
+  function addTask() {
+	
+	var param = {
+		key: jQuery("#taskName")[0].value,
+		time: parseInt(jQuery("#secondCount")[0].value)	
+	};
+	
+	jQuery.ajax({
+	  type: "POST",	
+	  url: "http://127.0.0.1:8081/task",
+	  data: param
+	}).done(function() { 
+		redraw();
+	});	
+  };
+  
+  function startTimer() {  
+		
+	jQuery.ajax({
+	  type: "GET",	
+	  url: "http://127.0.0.1:8081/first"
+	}).done(function(data) { 
+	
+		if(data === "" || data === null || data === undefined) {			
+			jQuery("#alert").text("no more task: either empty list or no non completed task");
+			return;
+		}
+		
+		var d = jQuery.parseJSON(data);		
+		var remaining = parseInt(d.time);			
+		
+		jQuery("#taskCompleteButton").show();
+		jQuery("#alert").text("");
+			
+		timer = setInterval(function () {
+		
+			jQuery("#remainingSecond").text(remaining);
+			
+			if(remaining == 0)
+			{
+				clearInterval(timer);
+				jQuery("#alert").removeClass("alert");
+				jQuery("#alert").text("Time out");
+				jQuery("#taskCompleteButton").hide();
+				
+				return;
+			}
+			
+			if(remaining < 5 && !jQuery("#alert").hasClass("alert"))
+			{
+				jQuery("#alert").text("Alert: your time is almost done");
+				jQuery("#alert").addClass("alert");				
+			}
+					
+			remaining--; 
+			
+		}, 1000);		
+	});		
+  };
+  
+  function taskComplete () {
+  
+	jQuery.ajax({
+	  type: "POST",	
+	  url: "http://127.0.0.1:8081/complete"
+	}).done(function() {	
+		clearInterval(timer);
+		jQuery("#remainingSecond").text(0);
+		jQuery("#taskCompleteButton").hide();
+		if (jQuery("#alert").hasClass("alert")) {
+			jQuery("#alert").removeClass("alert");		
+		}
+		jQuery("#alert").text("");	
+		redraw();	
+	}); 
+  };  
+  
+  function redraw() {   
+	var $ = go.GraphObject.make;  
+	myDiagram.div = null;
+	init();  
+  };
+  
+</script>
+</head>
+<body onload="init()">
+<table><tr>
+  <td id="taskarea" class="area">
+	<div class="heading">Task</div>
+	<div class="label">Please enter task name:</div>
+	<div class="description"><textarea id="taskName"></textarea></div>
+	<div class="label">Please enter time in second:</div>
+	<div class="input"><input id="secondCount" /></div>
+    <div class="button"><button onclick="checkTask()">Add Task</button></div>
+	<div id="taskError" class="label"></div>
+  </td>  
+  <td><div id="myDiagramDiv" /></td>
+  <td id="timerarea" class="area">
+	<div class="heading">Timer</div>
+    <div class="label">You still have:</div>
+	<div class="remaining-second" id="remainingSecond">0</div>
+	<div class="label">second(s)</div>
+	<div class="button"><button onclick="startTimer()">Start Timer</button></div>
+	<div class="button" id="taskCompleteButton" style="display: none"><button onclick="taskComplete()">Task Complete</button></div>
+	<div id="alert" class="label"></div>
+  </td>
+</tr></table>
+</body>
+</html>
